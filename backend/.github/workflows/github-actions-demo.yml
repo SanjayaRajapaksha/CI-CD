@@ -1,0 +1,62 @@
+name: Express CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy Express App to EC2
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout source code
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      # Node.js setup for CI validation
+      - name: Setup Node.js for CI
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # Install dependencies locally (CI check)
+      - name: Install dependencies (CI)
+        run: npm install
+
+      # Deploy to EC2 via SSH
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            echo "🔹 Loading NVM"
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+            echo "🔹 Using Node version"
+            nvm use 24
+
+            echo "🔹 Navigating to project directory"
+            cd /home/ubuntu/backend-express-02/express-api-deVops-02
+
+            echo "🔹 Syncing code with GitHub"
+            git fetch origin
+            git reset --hard origin/main
+
+            echo "🔹 Installing dependencies"
+            npm install --production
+
+            echo "🔹 Restarting PM2 app (zero-downtime)"
+            pm2 reload 2 || pm2 start index --name "express-api"
+
+            echo "🔹 Saving PM2 process list"
+            pm2 save
+
+            echo "🔹 Optional health check"
+            curl -f http://localhost:4000/ || echo "⚠ Health check failed"
+
+            echo "✅ Deployment completed successfully"
